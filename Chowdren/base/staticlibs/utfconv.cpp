@@ -41,6 +41,26 @@ void convert_utf8_to_utf16(const chowstring & value, chowstring & out)
     out.resize((unsigned long)(res_c - target_c));
 }
 
+int convert_utf8_to_utf16(const char * value, char * out, unsigned int size)
+{
+    if (size == 0)
+        return 0;
+    unsigned char * source = (unsigned char*)value;
+    unsigned char * end = source + size;
+
+    union {
+        unsigned short * target;
+        unsigned char * target_c;
+    };
+    union {
+        unsigned short * res;
+        unsigned char * res_c;
+    };
+    target_c = (unsigned char*)&out[0];
+    res = utf8::unchecked::utf8to16(source, end, target);
+    return ((unsigned long)(res_c - target_c)) / 2;
+}
+
 void convert_utf16_to_utf8(const chowstring & value, chowstring & out)
 {
     if (value.empty()) {

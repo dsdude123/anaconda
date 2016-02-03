@@ -6,11 +6,18 @@ import os
 def use_deferred_collisions(converter):
     return False
 
+def get_frames(converter, game, frames):
+    return frames
+    new_frames = {}
+    for i in (0, 1, 3, 4):
+        new_frames[i] = frames[i]
+    return new_frames
+
 def init(converter):
     converter.add_define('CHOWDREN_IS_NL2')
     converter.add_define('CHOWDREN_QUICK_SCALE')
     converter.add_define('CHOWDREN_POINT_FILTER')
-    converter.add_define('CHOWDREN_3DS_BORDERS')
+    converter.add_define('CHOWDREN_SCREEN_BORDERS')
     converter.add_define('CHOWDREN_OBSTACLE_IMAGE')
     converter.add_define('CHOWDREN_TEXTURE_GC')
     converter.add_define('CHOWDREN_DEFAULT_SCALE', 2)
@@ -18,8 +25,30 @@ def init(converter):
     converter.add_define('CHOWDREN_IGNORE_INACTIVE')
     converter.add_define('CHOWDREN_NO_PASTE')
     converter.add_define('CHOWDREN_NL2_CONSOLE')
+    converter.add_define('CHOWDREN_ENABLE_DPD')
+    converter.add_define('CHOWDREN_FORCE_REMOTE')
 
 def init_group(converter, group):
+    if not converter.current_frame.name.startswith('--'):
+        return
+    fix_mouse(converter, group)
+    fix_reload(converter, group)
+
+def fix_reload(converter, group):
+    cond = group.conditions[0]
+    if cond.data.getName() != 'CompareY':
+        return
+
+    orig_convert = cond.convert_parameter
+    def custom_convert(parameter):
+        ret = orig_convert(parameter)
+        if ret.endswith('+238'):
+            ret = ret.replace('+238', '+nl2_get_reload_pos()')
+        return ret
+
+    cond.convert_parameter = custom_convert
+
+def fix_mouse(converter, group):
     if len(group.conditions) != 1:
         return
     if group.conditions[0].data.getName() != 'CompareAlterableValue':
@@ -41,7 +70,22 @@ def init_group(converter, group):
     if param.loader.value not in (12, 14):
         return
     print 'Removing alterable set for', param.loader.value
-    group.actions = group.actions[1:]
+    if converter.platform_name == 'wiiu':
+        action = group.actions[0]
+        orig_pre = action.write_pre
+        def custom_write_pre(writer):
+            orig_pre(writer)
+            writer.putc('if (platform_get_control_type() == '
+                 'CONTROL_WIIMOTE_NUNCHUCK) {')
+
+        action.write_pre = custom_write_pre
+        orig_write = action.write
+        def custom_write(writer):
+            orig_write(writer)
+            writer.putc('\n}\n')
+        group.actions[0].write = custom_write
+    else:
+        group.actions = group.actions[1:]
 
 def finish(converter):
     obj = converter.name_to_writer['Reserve Values'][0]
@@ -50,6 +94,24 @@ def finish(converter):
     obj = converter.name_to_writer['Top-Lefter'][0]
     obj_list = converter.object_list_ids[obj.get_list_id()][0]
     converter.add_define('nl2_topleft_list', obj_list)
+    obj = converter.name_to_writer['Skip Text'][0]
+    obj_list = converter.object_list_ids[obj.get_list_id()][0]
+    converter.add_define('nl2_skip_list', obj_list)
+    obj = converter.name_to_writer['Targeting Center'][0]
+    obj_list = converter.object_list_ids[obj.get_list_id()][0]
+    converter.add_define('nl2_cursor1_list', obj_list)
+    obj = converter.name_to_writer['Targeting Center 2'][0]
+    obj_list = converter.object_list_ids[obj.get_list_id()][0]
+    converter.add_define('nl2_cursor2_list', obj_list)
+    obj = converter.name_to_writer['Targeting Frame'][0]
+    obj_list = converter.object_list_ids[obj.get_list_id()][0]
+    converter.add_define('nl2_cursor3_list', obj_list)
+    obj = converter.name_to_writer['ControlMenu'][0]
+    obj_list = converter.object_list_ids[obj.get_list_id()][0]
+    converter.add_define('nl2_controlmenu_list', obj_list)
+    obj = converter.name_to_writer['Almond Play'][0]
+    obj_list = converter.object_list_ids[obj.get_list_id()][0]
+    converter.add_define('nl2_almond_list', obj_list)
 
 def use_image_preload(converter):
     return True
@@ -101,6 +163,11 @@ def get_string(converter, value):
     if converter.platform_name == '3ds':
         if value == './save':
             return 'data:/save'
+    elif converter.platform_name == 'wiiu':
+        if value == './save':
+            return '/vol/save/common/save'
+    if value == "I'd just be playing with\r\nmyself.":
+        return "I'd just be playing by\r\nmyself."
     return value
 
 def get_wave_sound(converter, data):
@@ -158,3 +225,34 @@ def prepare_loop_body(converter, loop_name, writer, groups):
     klass = converter.get_object_class(obj[1])
     converter.set_object(obj, '((%s)%s)' % (klass, obj_name))
     return [name]
+
+from PIL import Image
+
+def get_images(converter):
+    images = {}
+    obj = converter.find_frameitem("Text Done")
+    data = obj.properties.loader.animations.loadedAnimations
+
+    path = os.path.join(os.path.dirname(__file__), 'nl2')
+    for i in xrange(2):
+        handle = data[0].loadedDirections[0].frames[i]
+        imageitem = converter.game.images.itemDict[handle]
+        imageitem.yHotspot += 7
+        imageitem.xHotspot -= 4
+        image_name = 'press%s.png' % (i + 1)
+        image_path = os.path.join(path, image_name)
+        images[handle] = Image.open(image_path).convert('RGBA')
+
+    obj = converter.find_frameitem("Skip Text")
+    data = obj.properties.loader.animations.loadedAnimations
+
+    for i in xrange(2):
+        handle = data[0].loadedDirections[0].frames[i]
+        imageitem = converter.game.images.itemDict[handle]
+        imageitem.yHotspot += 13
+        imageitem.xHotspot += 10
+        image_name = 'skip%s.png' % (i + 1)
+        image_path = os.path.join(path, image_name)
+        images[handle] = Image.open(image_path).convert('RGBA')
+
+    return images

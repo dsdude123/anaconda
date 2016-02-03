@@ -533,6 +533,7 @@ public:
     bool end_buffers[BUFFER_COUNT];
     bool stopping;
     double seek_time;
+    double loop_pos;
 
 #ifdef USE_THREAD_PRELOAD
     volatile bool fill_now;
@@ -556,6 +557,7 @@ public:
 
     void init(SoundDecoder * decoder)
     {
+        loop_pos = 0.0;
         file = decoder;
         playing = loop = stopping = fill_now = with_seek = false;
         format = get_format(file->channels);
@@ -590,9 +592,6 @@ public:
             al_check(alSourcePlay(source));
             return;
         }
-
-        // Move to the beginning
-        // on_seek(0);
 
         samples_processed = 0;
 
@@ -702,7 +701,7 @@ public:
         if (fill_now) {
             fill_now = false;
             if (with_seek) {
-                on_seek(seek_time);
+                file->seek(seek_time);
                 with_seek = false;
             }
             stopping = fill_queue();
@@ -764,11 +763,6 @@ public:
         }
     }
 
-    void on_seek(double offset)
-    {
-        file->seek(offset);
-    }
-
     bool fill_buffer(unsigned int buffer_num)
     {
         bool stopping = false;
@@ -783,7 +777,7 @@ public:
             // Check if the stream must loop or stop
             if (loop) {
                 // Return to the beginning of the stream source
-                on_seek(0);
+                file->seek(loop_pos);
 
                 // If we previously had no data, try to fill the buffer once
                 // again
@@ -836,6 +830,11 @@ public:
         UNLOCK_STREAM;
     }
 };
+
+void set_loop_pos(SoundBase * sound, float pos)
+{
+    ((SoundStream*)sound)->loop_pos = pos;
+}
 
 // audio device implementation
 

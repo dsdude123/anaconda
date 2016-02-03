@@ -30,6 +30,13 @@ import java.util.EnumSet;
 
 gamecircle */
 
+/* googleplay
+
+import android.os.storage.OnObbStateChangeListener;
+import android.os.storage.StorageManager;
+
+googleplay */
+
 /**
     SDL Activity
 */
@@ -70,6 +77,10 @@ public class SDLActivity extends Activity {
             AmazonGamesFeature.Achievements);
     gamecircle */
 
+    /* googleplay
+    protected static String obbMountPath;
+    googleplay */
+
     // Load the .so
     static {
         //System.loadLibrary("SDL2");
@@ -100,6 +111,10 @@ public class SDLActivity extends Activity {
         mIsPaused = false;
         mIsSurfaceReady = false;
         mHasFocus = true;
+
+        /* googleplay
+        obbMountPath = null;
+        googleplay */
     }
 
     // Setup
@@ -126,7 +141,32 @@ public class SDLActivity extends Activity {
         mLayout.addView(mSurface);
 
         setContentView(mLayout);
+
+        /* googleplay
+        String expansionFile = getIntent().getStringExtra("expansionFile");
+
+        if (expansionFile != null) {
+            final StorageManager storage = (StorageManager)getSystemService(STORAGE_SERVICE);
+            storage.mountObb(expansionFile, null, new OnObbStateChangeListener() {
+            @Override
+            public void onObbStateChange(String path, int state) {
+                super.onObbStateChange(path, state);
+                if (state != OnObbStateChangeListener.MOUNTED) {
+                    finish();
+                    return;
+                }
+                obbMountPath = storage.getMountedObbPath(path);
+            }});
+        }
+        googleplay */
     }
+
+    /* googleplay
+    public static String getObbPath()
+    {
+        return obbMountPath;
+    }
+    googleplay */
 
     // Events
     @Override
@@ -239,6 +279,9 @@ public class SDLActivity extends Activity {
         mSingleton.finish();
     }
 
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        SDLActivity.onNativeActivityResult(this, requestCode,resultCode, data);
+    }
 
     // Messages from the SDLMain thread
     static final int COMMAND_CHANGE_TITLE = 1;
@@ -335,6 +378,10 @@ public class SDLActivity extends Activity {
                                                int is_accelerometer, int nbuttons, 
                                                int naxes, int nhats, int nballs);
     public static native int nativeRemoveJoystick(int device_id);
+    public static native void onNativeActivityResult(Activity activity,
+                                                     int requestCode,
+                                                     int resultCode,
+                                                     Intent data);
 
     public static void flipBuffers() {
         SDLActivity.nativeFlipBuffers();

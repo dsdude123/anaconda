@@ -288,6 +288,30 @@ cdef class ByteReader:
             return <unsigned int>value
         return value
 
+    cpdef readInt64(self, bint asUnsigned = False):
+        cdef unsigned long long value
+        cdef unsigned char byte1, byte2, byte3, byte4
+        cdef unsigned char byte5, byte6, byte7, byte8
+        self._read(&byte1, 1)
+        self._read(&byte2, 1)
+        self._read(&byte3, 1)
+        self._read(&byte4, 1)
+        self._read(&byte5, 1)
+        self._read(&byte6, 1)
+        self._read(&byte7, 1)
+        self._read(&byte8, 1)
+        value = (((<unsigned long long>byte8) << 56ULL) |
+                 ((<unsigned long long>byte7) << 48ULL) |
+                 ((<unsigned long long>byte6) << 40ULL) |
+                 ((<unsigned long long>byte5) << 32ULL) |
+                 ((<unsigned long long>byte4) << 24ULL) |
+                 ((<unsigned long long>byte3) << 16ULL) |
+                 ((<unsigned long long>byte2) << 8ULL) |
+                 ((<unsigned long long>byte1)))
+        if asUnsigned:
+            return value
+        return <long long>value
+
     cpdef bytes readString(self, size=None):
         if size is not None:
             return self.readReader(size).readString()
@@ -445,7 +469,7 @@ cdef class ByteReader:
         self.seek(n, 1)
 
     cpdef bint rewind(self, size_t n):
-        self.seek(-n, 1)
+        self.seek(-(<int>n), 1)
 
     def truncate(self, value):
         self.buffer.truncate(value)

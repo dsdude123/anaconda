@@ -52,21 +52,26 @@ public:
 };
 
 #ifdef USE_ASSET_MANAGER
-extern "C" {
-#undef __cplusplus
 #include <jni.h>
-#define __cplusplus
 #include <android/asset_manager.h>
 #include <android/asset_manager_jni.h>
 #include <android/configuration.h>
-}
 #include <SDL_system.h>
 static jobject java_asset_manager;
 AAssetManager * global_asset_manager;
 static chowstring internal_path;
 static chowstring android_language("English");
+chowstring obb_path;
 
 extern "C" JNIEnv *Android_JNI_GetEnv(void);
+
+static jobject java_activity_context;
+
+#ifdef CHOWDREN_USE_GOOGLEPLAY
+#include "gpg/gpg.h"
+std::unique_ptr<gpg::GameServices> game_services;
+static bool in_auth = true;
+#endif
 
 void init_asset_manager()
 {
@@ -74,25 +79,62 @@ void init_asset_manager()
 
     JNIEnv *env = Android_JNI_GetEnv();
     const int capacity = 16;
-    (*env)->PushLocalFrame(env, capacity);
+    env->PushLocalFrame(capacity);
 
-    jclass mActivityClass = (*env)->FindClass(env,
-                                              "org/libsdl/app/SDLActivity");
+    jclass mActivityClass = env->FindClass("org/libsdl/app/SDLActivity");
 
     /* context = SDLActivity.getContext(); */
-    mid = (*env)->GetStaticMethodID(env, mActivityClass,
+    mid = env->GetStaticMethodID(mActivityClass,
             "getContext","()Landroid/content/Context;");
-    jobject context = (*env)->CallStaticObjectMethod(env, mActivityClass,
-                                                     mid);
+    jobject context = env->CallStaticObjectMethod(mActivityClass, mid);
+    java_activity_context = env->NewGlobalRef(context);
+
+#ifdef CHOWDREN_USE_GOOGLEPLAY
+    gpg::AndroidPlatformConfiguration platform_configuration;
+    platform_configuration.SetActivity(java_activity_context);
+    gpg::GameServices::Builder builder;
+
+    game_services = builder
+        .SetOnAuthActionStarted([](gpg::AuthOperation op) {
+            if (op == gpg::AuthOperation::SIGN_IN)
+                in_auth = true;
+            std::cout << "on auth started: " << op << std::endl;
+        }).SetOnAuthActionFinished([](gpg::AuthOperation op,
+                                   gpg::AuthStatus status) {
+            std::cout << "on auth fin: " << op << " " << status << std::endl;
+            if (op != gpg::AuthOperation::SIGN_IN)
+                return;
+            in_auth = false;
+            if (!game_services->IsAuthorized())
+                game_services->StartAuthorizationUI();
+        }).Create(platform_configuration);
+#endif
 
     /* assetManager = context.getAssets(); */
-    mid = (*env)->GetMethodID(env, (*env)->GetObjectClass(env, context),
+    mid = env->GetMethodID(env->GetObjectClass(context),
             "getAssets", "()Landroid/content/res/AssetManager;");
-    jobject asset_manager = (*env)->CallObjectMethod(env, context, mid);
-    java_asset_manager = (*env)->NewGlobalRef(env, asset_manager);
+    jobject asset_manager = env->CallObjectMethod(context, mid);
+    java_asset_manager = env->NewGlobalRef(asset_manager);
     global_asset_manager = AAssetManager_fromJava(env, java_asset_manager);
 
-    (*env)->PopLocalFrame(env, NULL);
+#ifdef CHOWDREN_USE_GOOGLEPLAY
+    /* String path = SDLActivity.getObbPath(); */
+    mid = env->GetStaticMethodID(mActivityClass,
+            "getObbPath", "()Ljava/lang/String;");
+    jstring obb;
+    while (true) {
+        obb = (jstring)env->CallStaticObjectMethod(mActivityClass, mid);
+        if (obb != NULL)
+            break;
+        platform_sleep(0.1);
+    }
+
+    const char* obb_utf8 = env->GetStringUTFChars(obb, 0);
+    obb_path = std::string(obb_utf8, env->GetStringUTFLength(obb));
+    env->ReleaseStringUTFChars(obb, obb_utf8);
+#endif
+
+    env->PopLocalFrame(NULL);
 
     internal_path = SDL_AndroidGetInternalStoragePath();
 
@@ -124,10 +166,62 @@ void init_asset_manager()
             android_language = "English";
             break;
     }
-
     #undef MAKE_LANG
 }
 #endif
+
+// JNI handlers
+extern "C"
+{
+    jint SDL_JNI_OnLoad(JavaVM* vm, void* reserved);
+    jint JNI_OnLoad(JavaVM* vm, void* reserved)
+    {
+    #ifdef CHOWDREN_USE_GOOGLEPLAY
+        gpg::AndroidInitialization::JNI_OnLoad(vm);
+    #endif
+        return SDL_JNI_OnLoad(vm, reserved);
+    }
+
+    void Java_org_libsdl_app_SDLActivity_onNativeActivityResult(
+                                        JNIEnv* env, jobject thiz,
+                                        jobject activity, jint requestCode,
+                                        jint resultCode, jobject data)
+    {
+    #ifdef CHOWDREN_USE_GOOGLEPLAY
+        gpg::AndroidSupport::OnActivityResult(env, activity, requestCode,
+                                              resultCode, data);
+    #endif
+    }
+}
+
+void android_check_auth()
+{
+#ifdef CHOWDREN_USE_GOOGLEPLAY
+    static int count = 0;
+        count++;
+
+    if (!in_auth)
+        return;
+
+    ChowdrenAudio::pause_audio();
+    while (in_auth) {
+        platform_sleep(0.1);
+    }
+    ChowdrenAudio::resume_audio();
+#endif
+}
+
+void platform_minimize()
+{
+    jmethodID mid;
+    const int capacity = 16;
+    JNIEnv *env = Android_JNI_GetEnv();
+    env->PushLocalFrame(capacity);
+    mid = env->GetMethodID(env->GetObjectClass(java_activity_context),
+            "moveTaskToBack", "(Z)Z");
+    jboolean ret = env->CallBooleanMethod(java_activity_context, mid, true);
+    env->PopLocalFrame(NULL);
+}
 
 void platform_init_android()
 {
@@ -138,6 +232,8 @@ void platform_init_android()
 #ifdef USE_ASSET_MANAGER
     init_asset_manager();
 #endif
+
+    android_check_auth();
 }
 
 const chowstring & platform_get_language()
@@ -240,6 +336,22 @@ void platform_unlock_achievement(const chowstring & name)
 {
     AmazonGames::AchievementsClientInterface::updateProgress(
         name.c_str(), 100.0f, 0);
+}
+
+#elif CHOWDREN_USE_GOOGLEPLAY
+
+void platform_unlock_achievement(const chowstring & name)
+{
+    if (!game_services->IsAuthorized())
+        return;
+    game_services->Achievements().Unlock(name);
+}
+
+void platform_open_achievements()
+{
+    if (!game_services->IsAuthorized())
+        return;
+    game_services->Achievements().ShowAllUI();
 }
 
 #else

@@ -15,7 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // along with Anaconda.  If not, see <http://www.gnu.org/licenses/>.
 
-#ifdef _WIN32
+#if defined(CHOWDREN_IS_WIN32)
 #include <windows.h>
 #include <mmsystem.h>
 #include <io.h>
@@ -90,6 +90,9 @@ static int windowed_width = WINDOW_WIDTH;
 static int windowed_height = WINDOW_HEIGHT;
 #endif
 static bool hide_cursor = false;
+static bool relative_mouse = false;
+static int relative_mouse_x = WINDOW_WIDTH / 2;
+static int relative_mouse_y = WINDOW_HEIGHT / 2;
 static bool has_closed = false;
 static Uint64 start_time;
 int scale_type = BEST_FIT;
@@ -282,7 +285,6 @@ void platform_init()
         return;
     }
     SDL_EventState(SDL_MOUSEMOTION, SDL_DISABLE);
-    // SDL_EventState(SDL_WINDOWEVENT, SDL_DISABLE);
 #ifdef __APPLE__
     set_resources_dir();
 #endif
@@ -361,6 +363,10 @@ void platform_poll_events()
             case SDL_MOUSEBUTTONUP:
                 on_mouse(e.button);
                 break;
+            case SDL_MOUSEMOTION:
+                relative_mouse_x += e.motion.xrel;
+                relative_mouse_y += e.motion.yrel;
+                break;
             case SDL_JOYDEVICEADDED:
                 add_joystick(e.jdevice.which);
                 break;
@@ -431,6 +437,10 @@ void platform_poll_events()
                 break;
         }
     }
+
+#ifdef CHOWDREN_IS_ANDROID
+    android_check_auth();
+#endif
 }
 
 // time
@@ -480,6 +490,11 @@ bool platform_display_closed()
 
 void platform_get_mouse_pos(int * x, int * y)
 {
+    if (relative_mouse) {
+        *x = relative_mouse_x;
+        *y = relative_mouse_y;
+        return;
+    }
     SDL_GetMouseState(x, y);
     *x = (*x - draw_x_off) * (float(WINDOW_WIDTH) / draw_x_size);
     *y = (*y - draw_y_off) * (float(WINDOW_HEIGHT) / draw_y_size);
@@ -1068,6 +1083,13 @@ void platform_begin_draw()
     screen_fbo.bind();
 }
 
+static int border_size = 0;
+
+void platform_set_border_size(int size)
+{
+    border_size = size;
+}
+
 void platform_swap_buffers()
 {
 #ifdef CHOWDREN_USE_GL_DEBUG
@@ -1079,7 +1101,8 @@ void platform_swap_buffers()
     int window_width, window_height;
     platform_get_size(&window_width, &window_height);
     bool resize = window_width != WINDOW_WIDTH ||
-                  window_height != WINDOW_HEIGHT;
+                  window_height != WINDOW_HEIGHT ||
+                  border_size != 0;
 
 #ifdef CHOWDREN_FORCE_FILL
     int use_scale_type = EXACT_FIT;
@@ -1106,6 +1129,12 @@ void platform_swap_buffers()
     } else {
         draw_x_size = WINDOW_WIDTH;
         draw_y_size = WINDOW_HEIGHT;
+    }
+
+    if (border_size != 0) {
+        float p = 1.0f - border_size / 100.0f;
+        draw_x_size *= p;
+        draw_y_size *= p;
     }
 
     draw_x_off = (window_width - draw_x_size) / 2;
@@ -1216,6 +1245,13 @@ void platform_set_display_scale(int scale)
                           SDL_WINDOWPOS_CENTERED);
 }
 
+void platform_set_relative_mouse(bool enabled)
+{
+    relative_mouse = enabled;
+    SDL_EventState(SDL_MOUSEMOTION, enabled ? SDL_ENABLE : SDL_DISABLE);
+    SDL_SetRelativeMouseMode(enabled ? SDL_TRUE : SDL_FALSE);
+}
+
 void platform_set_scale_type(int type)
 {
     scale_type = type;
@@ -1247,6 +1283,9 @@ void platform_show_mouse()
 
 void platform_hide_mouse()
 {
+#ifdef CHOWDREN_IS_NL2
+    return;
+#endif
     hide_cursor = true;
     SDL_ShowCursor(0);
 }
@@ -1263,7 +1302,7 @@ const chowstring & platform_get_language()
 
 const chowstring & platform_get_language()
 {
-    static chowstring language("English");
+    static chowstring language("French");
     return language;
 }
 
@@ -1272,6 +1311,10 @@ const chowstring & platform_get_language()
 // filesystem stuff
 
 #ifndef CHOWDREN_IS_ANDROID
+
+void platform_open_achievements()
+{
+}
 
 #include <sys/stat.h>
 
@@ -1531,6 +1574,17 @@ public:
     }
 
     bool get_button(int b)
+    {
+#ifdef CHOWDREN_IS_ANDROID
+        if (b == SDL_CONTROLLER_BUTTON_B) {
+            return get_button_raw(SDL_CONTROLLER_BUTTON_B) ||
+                   get_button_raw(SDL_CONTROLLER_BUTTON_BACK);
+        }
+#endif
+        return get_button_raw(b);
+    }
+
+    bool get_button_raw(int b)
     {
         if (controller == NULL)
             return get_button((SDL_GameControllerButton)b);
@@ -2272,10 +2326,5 @@ void platform_exit()
 #endif
 
     joysticks.clear();
-
     SDL_Quit();
-
-#ifdef CHOWDREN_IS_ANDROID
-    exit(0);
-#endif
 }

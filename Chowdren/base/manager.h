@@ -71,6 +71,10 @@ public:
     chowstring input;
 #endif
 
+#ifdef CHOWDREN_IS_3DS
+    bool swap_screens;
+#endif
+
     // player controls
     int up, down, left, right, button1, button2, button3, button4;
 

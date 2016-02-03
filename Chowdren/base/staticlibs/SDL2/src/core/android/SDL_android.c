@@ -86,7 +86,7 @@ static bool bHasNewData;
 *******************************************************************************/
 
 /* Library init */
-jint JNI_OnLoad(JavaVM* vm, void* reserved)
+jint SDL_JNI_OnLoad(JavaVM* vm, void* reserved)
 {
     JNIEnv *env;
     mJavaVM = vm;

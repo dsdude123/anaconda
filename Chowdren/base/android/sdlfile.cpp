@@ -19,6 +19,7 @@
 
 extern AAssetManager * global_asset_manager;
 extern chowstring internal_path;
+extern chowstring obb_path;
 
 enum ExtraFlags
 {
@@ -46,6 +47,14 @@ void BaseFile::open(const char * filename, const char * mode)
         handle = (void*)fp;
         return;
     }
+#ifdef CHOWDREN_USE_GOOGLEPLAY
+    new_path = obb_path + "/" + file_string;
+    fp = fopen(new_path.c_str(), new_mode);
+    if (fp != NULL) {
+        handle = (void*)fp;
+        return;
+    }
+#endif
     AAsset * asset = AAssetManager_open(global_asset_manager,
                                         file_string.c_str(),
                                         AASSET_MODE_UNKNOWN);

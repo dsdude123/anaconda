@@ -48,7 +48,24 @@ def init(converter):
         strings[8] = 'PS4'
 
     converter.add_define('CHOWDREN_SAVE_PATH', 'save')
-    
+
+def write_frame_pre(converter, writer):
+    if converter.current_frame in ('SPLASH',):
+        return
+    handle = converter.get_handle_from_name(('CONTROLLER VALUES',))
+    obj = converter.get_object(handle)
+    writer.putlnc('FrameObject * controller_values = %s;', obj)
+    writer.putlnc('if (controller_values != NULL) {')
+    writer.indent()
+    writer.putlnc('if (is_joystick_pressed_once(1, 7)) {')
+    writer.indent()
+    writer.putlnc('controller_values->alterables->values.set(8, 1);')
+    writer.dedent()
+    writer.putlnc('} else {')
+    writer.indent()
+    writer.putlnc('controller_values->alterables->values.set(8, 0);')
+    writer.end_brace()
+    writer.end_brace()
 
 def get_loop_name(converter, parameter):
     name = converter.convert_parameter(parameter)
@@ -164,6 +181,21 @@ ps4_achievements = {
     'GET_THE_CHOPPA': 'GET THE CHOPPA!'
 }
 
+android_replacements = {
+    'MAYOR': 'CgkIsM6Pt5cYEAIQAQ',
+    'PRIMINISTER': 'CgkIsM6Pt5cYEAIQAg',
+    'KING_OF_ENGLAND': 'CgkIsM6Pt5cYEAIQAw',
+    'MEGALORD': 'CgkIsM6Pt5cYEAIQBA',
+    'MYSTERY_DOOR': 'CgkIsM6Pt5cYEAIQBQ',
+    'YIPPEE_KAI_AY': 'CgkIsM6Pt5cYEAIQBg',
+    'EASTERN_PROMISE': 'CgkIsM6Pt5cYEAIQBw',
+    'EXECUTIONER': 'CgkIsM6Pt5cYEAIQCA',
+    'DEAD_EYE': 'CgkIsM6Pt5cYEAIQCQ',
+    'KILL_BOGDAN': 'CgkIsM6Pt5cYEAIQCg',
+    'KILL_UPGRAYDD': 'CgkIsM6Pt5cYEAIQCw',
+    'GET_THE_CHOPPA': 'CgkIsM6Pt5cYEAIQDA'
+}
+
 ps4_list = [
     'MEGALORD',
     "I'M THE KING",
@@ -180,7 +212,6 @@ ps4_list = [
 ]
 
 ps4_replacements = {}
-
 for k, v in ps4_achievements.iteritems():
     ps4_replacements[k] = str(ps4_list.index(v))
 
@@ -203,12 +234,19 @@ def get_string(converter, value):
     if converter.platform_name == 'android':
         if value in save_paths:
             return './Profile.ini'
+        android_value = android_replacements.get(value, None)
+        if android_value is not None:
+            print 'achievement:', value
+            return android_value
     elif converter.platform_name == 'ps4':
         if value in save_paths:
             return './save/Profile.INI'
         ps4_value = ps4_replacements.get(value, None)
         if ps4_value is not None:
             return ps4_value
+    elif converter.platform_name == 'xb1':
+        if value in save_paths:
+            return './save/Profile.INI'
     else:
         if value in save_paths:
             return './Bin/Profile.ini'

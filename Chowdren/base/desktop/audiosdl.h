@@ -20,13 +20,33 @@
 
 #ifdef CHOWDREN_IS_EMSCRIPTEN
 #include <emscripten/emscripten.h>
-#else // CHOWDREN_IS_EMSCRIPTEN
+#elif defined(CHOWDREN_IS_XB1) || defined(FORCE_XAUDIO2)
+#include <xaudio2.h>
+#include <windows.h>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#define USE_XAUDIO2
+#define SDL_GetTicks() (platform_get_time() * 1000.0)
+#define SDL_LockAudioDevice(v)
+#define SDL_UnlockAudioDevice(v)
+#define SDL_PauseAudioDevice(a, b)
+#define SDL_CondBroadcast(v) v.notify_all()
+#define SDL_LockMutex(v) v.lock()
+#define SDL_UnlockMutex(v) v.unlock()
+
+typedef unsigned char * Uint8;
+typedef unsigned int SDL_AudioDeviceID;
+typedef unsigned int SDL_Thread;
+typedef unsigned int SDL_mutex;
+typedef unsigned int SDL_cond;
+#else
 #include <SDL_thread.h>
 #include <SDL_mutex.h>
 #include <SDL_messagebox.h>
 #include <SDL_audio.h>
 #include <SDL.h>
-#endif // CHOWDREN_IS_EMSCRIPTEN
+#endif
 
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -52,15 +72,31 @@ class AudioDevice
 {
 public:
 
+#ifdef USE_XAUDIO2
+    std::recursive_mutex stream_mutex;
+    std::mutex stream_cond_mutex;
+    std::condition_variable stream_cond;
+    std::thread streaming_thread;
+    std::thread audio_thread;
+    void audio_update();
+#else
     SDL_Thread * streaming_thread;
     SDL_mutex * stream_mutex;
-    volatile bool closing;
-    SoundStream * streams[MAX_SOUNDS];
-    Sound * sounds[MAX_SOUNDS];
-    SDL_AudioDeviceID dev;
 #ifdef USE_THREAD_PRELOAD
     SDL_cond * stream_cond;
     SDL_mutex * stream_cond_mutex;
+#endif
+#endif
+    volatile bool closing;
+    SoundStream * streams[MAX_SOUNDS];
+    Sound * sounds[MAX_SOUNDS];
+
+#ifdef USE_XAUDIO2
+    IXAudio2 * engine;
+    IXAudio2SourceVoice * source;
+    IXAudio2MasteringVoice* master;
+#else
+    SDL_AudioDeviceID dev;
 #endif
 
     void open();
@@ -909,6 +945,7 @@ public:
 
         fill_now = true;
         playing = true;
+
         SDL_CondBroadcast(global_device.stream_cond);
     }
 
@@ -940,6 +977,7 @@ public:
         seek_time = t;
         fill_now = true;
         with_seek = true;
+
         SDL_CondBroadcast(global_device.stream_cond);
         // UNLOCK_STREAM;
     }
@@ -1038,6 +1076,11 @@ public:
     }
 };
 
+void set_loop_pos(SoundBase * sound, float pos)
+{
+    // ((SoundStream*)sound)->loop_pos = pos;
+}
+
 // audio device implementation
 
 static void audio_callback(void * user, Uint8 * in_stream, int len)
@@ -1084,18 +1127,129 @@ static void audio_callback(void * user, Uint8 * in_stream, int len)
     SDL_UnlockAudioDevice(global_device.dev);
 }
 
+#ifdef USE_XAUDIO2
+struct VoiceCallback : public IXAudio2VoiceCallback
+{
+    virtual void STDMETHODCALLTYPE OnVoiceProcessingPassStart(UINT32) override
+    {
+    }
+
+    virtual void STDMETHODCALLTYPE OnVoiceProcessingPassEnd() override
+    {
+    }
+
+    virtual void STDMETHODCALLTYPE OnStreamEnd() override
+    {
+    }
+
+    virtual void STDMETHODCALLTYPE OnBufferStart(void*) override
+    {
+    }
+
+    void STDMETHODCALLTYPE OnBufferEnd(void * data)
+    {
+        SetEvent(buffer_end_event);
+    }
+
+    virtual void STDMETHODCALLTYPE OnLoopEnd(void*) override
+    {
+    }
+
+    virtual void STDMETHODCALLTYPE OnVoiceError(void*, HRESULT) override
+    {
+    }
+
+    HANDLE buffer_end_event;
+
+    VoiceCallback()
+    {
+        buffer_end_event = CreateEventEx(NULL, NULL, 0, EVENT_ALL_ACCESS);
+    }
+
+    virtual ~VoiceCallback()
+    {
+        CloseHandle(buffer_end_event);
+    }
+};
+
+static VoiceCallback voice_callback;
+
+#define AUDIO_SAMPLES 256
+#define AUDIO_BUFFERS 3
+
+void AudioDevice::audio_update()
+{
+    float * data = new float[AUDIO_SAMPLES * AUDIO_BUFFERS * 2];
+    XAUDIO2_BUFFER buffers[AUDIO_BUFFERS] = {0};
+    for (int i = 0; i < AUDIO_BUFFERS; ++i) {
+        buffers[i].AudioBytes = AUDIO_SAMPLES * sizeof(float) * 2;
+        buffers[i].pAudioData = (const BYTE*)&data[i * AUDIO_SAMPLES * 2];
+    }
+
+    unsigned int current_buffer = 0;
+    while (!closing) {
+        while (true) {
+            XAUDIO2_VOICE_STATE state;
+
+            #ifdef CHOWDREN_IS_XB1
+            source->GetState(&state, XAUDIO2_VOICE_NOSAMPLESPLAYED);
+            #else
+            source->GetState(&state);
+            #endif
+
+            if (state.BuffersQueued < AUDIO_BUFFERS)
+                break;
+            WaitForSingleObject(voice_callback.buffer_end_event, INFINITE);
+        }
+
+        XAUDIO2_BUFFER * buffer = &buffers[current_buffer];
+        audio_callback(NULL, (Uint8*)buffer->pAudioData,
+                       AUDIO_SAMPLES * sizeof(float) * 2);
+        source->SubmitSourceBuffer(buffer);
+        current_buffer = (current_buffer + 1) % AUDIO_BUFFERS;
+    }
+
+    delete[] data;
+}
+#endif
+
 void AudioDevice::open()
 {
     closing = false;
-    streaming_thread = NULL;
 
+#ifdef USE_XAUDIO2
+    WAVEFORMATEX f;
+    f.wFormatTag = WAVE_FORMAT_IEEE_FLOAT;
+    f.nChannels = 2;
+    f.nSamplesPerSec = 44100;
+    f.nAvgBytesPerSec = 44100 * sizeof(float) * 2;
+    f.nBlockAlign = sizeof(float) * 2;
+    f.wBitsPerSample = sizeof(float) * 8;
+    f.cbSize = 0;
+
+    #ifndef CHOWDREN_IS_XB1
+    HRESULT hr = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (hr == RPC_E_CHANGED_MODE) {
+        hr = CoInitializeEx(NULL, COINIT_MULTITHREADED);
+    }
+    #endif
+
+    XAudio2Create(&engine, 0);
+    engine->CreateMasteringVoice(&master);
+    engine->CreateSourceVoice(&source, &f, 0,
+                              XAUDIO2_DEFAULT_FREQ_RATIO, &voice_callback);
+    source->Start(0);
+    streaming_thread = std::thread(&AudioDevice::stream_update, this);
+    audio_thread = std::thread(&AudioDevice::audio_update, this);
+#else
+    streaming_thread = NULL;
     SDL_AudioSpec want, have;
 
     SDL_zero(want);
     want.freq = 44100;
     want.format = AUDIO_F32SYS;
     want.channels = 2;
-    want.samples = 4096;
+    want.samples = 2048;
     want.callback = audio_callback;
 
     SDL_InitSubSystem(SDL_INIT_AUDIO);
@@ -1119,24 +1273,37 @@ void AudioDevice::open()
 #endif
     streaming_thread = SDL_CreateThread(_stream_update, "Stream thread",
                                         (void*)this);
+#endif
 }
 
 void pause_audio()
 {
+#ifdef USE_XAUDIO2
+#else
     if (global_device.dev == 0)
         return;
     SDL_PauseAudioDevice(global_device.dev, 1);
+#endif
 }
 
 void resume_audio()
 {
+#ifdef USE_XAUDIO2
+#else
     if (global_device.dev == 0)
         return;
     SDL_PauseAudioDevice(global_device.dev, 0);
+#endif
 }
 
 void AudioDevice::close()
 {
+#ifdef USE_XAUDIO2
+    closing = true;
+
+    if (streaming_thread.joinable())
+        streaming_thread.join();
+#else
     closing = true;
     if (streaming_thread != NULL) {
         int ret;
@@ -1145,15 +1312,20 @@ void AudioDevice::close()
 
     SDL_DestroyMutex(stream_mutex);
     SDL_CloseAudioDevice(dev);
+#endif
 }
 
 void AudioDevice::stream_update()
 {
     while (!closing) {
+#ifdef USE_XAUDIO2
+#else
         if (SDL_GetAudioDeviceStatus(dev) == SDL_AUDIO_PAUSED) {
             platform_sleep(0.125);
             continue;
         }
+#endif
+
         SDL_LockMutex(stream_mutex);
         vector<SoundStream*>::const_iterator it;
         for (int i = 0; i < MAX_SOUNDS; ++i) {
@@ -1169,13 +1341,18 @@ void AudioDevice::stream_update()
         }
         SDL_UnlockMutex(stream_mutex);
 
-#ifdef USE_THREAD_PRELOAD
+#if defined(USE_XAUDIO2)
+        std::unique_lock<std::mutex> lock(stream_cond_mutex);
+        stream_cond.wait_for(lock,
+                             std::chrono::milliseconds(125));
+#elif defined(USE_THREAD_PRELOAD)
         SDL_LockMutex(stream_cond_mutex);
         SDL_CondWaitTimeout(stream_cond, stream_cond_mutex, 125);
         SDL_UnlockMutex(stream_cond_mutex);
 #else
         platform_sleep(0.125);
 #endif
+
     }
 }
 

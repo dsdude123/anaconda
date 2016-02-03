@@ -4,6 +4,7 @@
 #include "chowstring.h"
 
 void convert_utf8_to_utf16(const chowstring & value, chowstring & out);
+int convert_utf8_to_utf16(const char * value, char * out, unsigned int size);
 void convert_utf16_to_utf8(const chowstring & value, chowstring & out);
 void convert_windows1252_to_utf8(const chowstring & value, chowstring & out);
 

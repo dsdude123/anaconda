@@ -8,7 +8,7 @@ endif()
 
 set(CMAKE_MODULE_PATH "${CHOWDREN_BASE_DIR}/cmake")
 
-if (CMAKE_CROSSCOMPILING AND NOT APPLE)
+if ((CMAKE_CROSSCOMPILING AND NOT APPLE) OR APP_PLATFORM STREQUAL "xb1")
     set(CROSSCOMPILING 1)
 endif()
 
@@ -61,6 +61,9 @@ option(EMULATE_WIIU "Emulate Wii U features" OFF)
 
 if (ANDROID OR EMSCRIPTEN)
     set(USE_GLES2 ON)
+elseif (APP_PLATFORM STREQUAL "xb1")
+    set(XB1 ON)
+    set(CROSSCOMPILING ON)
 elseif (CROSSCOMPILING)
     set(USE_GL OFF)
     set(USE_GLES2 OFF)
@@ -70,6 +73,24 @@ elseif (APP_PLATFORM STREQUAL "generic")
     set(USE_GL ON)
 elseif (APP_PLATFORM STREQUAL "d3d")
     set(USE_D3D ON)
+endif()
+
+if (XB1)
+    get_filename_component(PLATFORM_SRC_PATH
+                           "${CMAKE_CURRENT_LIST_DIR}/../extra/xb1/src"
+                           ABSOLUTE)
+    include_directories(${PLATFORM_SRC_PATH})
+    set(CMAKE_CXX)
+    set(CMAKE_C_STANDARD_LIBRARIES "d3d11_x.lib dxguid.lib d3dcompiler.lib combase.lib kernelx.lib uuid.lib")
+    set(CMAKE_CXX_STANDARD_LIBRARIES "d3d11_x.lib dxguid.lib d3dcompiler.lib combase.lib kernelx.lib uuid.lib")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:oldnames.lib")
+    set(PLATFORM_SRCS
+        ${PLATFORM_SRC_PATH}/platform.cpp
+        ${PLATFORM_SRC_PATH}/glslshader.cpp
+        ${PLATFORM_SRC_PATH}/fbo.cpp
+        ${PLATFORM_SRCS}
+    )
+    set(PLATFORM_LIBRARIES ${PLATFORM_LIBRARIES} "xaudio2.lib")
 endif()
 
 if(EMSCRIPTEN)
@@ -95,6 +116,13 @@ if (ANDROID)
         include_directories("${CHOWDREN_BASE_DIR}/GameCircleSDK/jni/includes")
         set(PLATFORM_LIBRARIES ${PLATFORM_LIBRARIES}
             "${CHOWDREN_BASE_DIR}/GameCircleSDK/jni/libAmazonGamesJni.so")
+    endif()
+    option(USE_GOOGLEPLAY OFF)
+    if (USE_GOOGLEPLAY)
+        add_definitions(-DCHOWDREN_USE_GOOGLEPLAY)
+        include_directories("${CHOWDREN_BASE_DIR}/gpg-cpp-sdk/android/include")
+        set(PLATFORM_LIBRARIES ${PLATFORM_LIBRARIES}
+            "${CHOWDREN_BASE_DIR}/gpg-cpp-sdk/android/lib/gnustl/${ANDROID_ABI}/libgpg.a")
     endif()
     include(AndroidNdkGdb)
     android_ndk_gdb_enable()
@@ -283,10 +311,25 @@ if (EMULATE_WIIU)
     add_definitions(-DCHOWDREN_HAS_MRT)
 endif()
 
-if(WIN32)
+if(XB1)
+    add_definitions(-DWIN32_LEAN_AND_MEAN)
+    add_definitions(-DNOMINMAX)
+    add_definitions(-D_DURANGO)
+    add_definitions(-DWINAPI_FAMILY=WINAPI_FAMILY_TV_TITLE)
+    add_definitions(-D_UITHREADCTXT_SUPPORT=0)
+    add_definitions(-D__WRL_NO_DEFAULT_LIB__)
+    add_definitions(-D_CRT_USE_WINAPI_PARTITION_APP)
+    add_definitions(-DMONOLITHIC=1)
+    add_definitions(-DCHOWDREN_IS_XB1)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /AI\"C:/Program Files (x86)/Microsoft SDKs/Durango.151100/v8.0/References/CommonConfiguration/Neutral/\"")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FU\"C:/Program Files (x86)/Microsoft Durango XDK/151100/xdk/VS2015/vc/platform/amd64/platform.winmd\"")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /FU\"C:/Program Files (x86)/Microsoft SDKs/Durango.151100/v8.0/references/commonconfiguration/neutral/windows.winmd\"")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /ZW")
+elseif(WIN32)
     add_definitions(-D_WINSOCKAPI_)
     add_definitions(-DWIN32_LEAN_AND_MEAN)
     add_definitions(-DNOMINMAX)
+    add_definitions(-DCHOWDREN_IS_WIN32)
     if (MINGW)
         set(PLATFORM_LIBRARIES ${PLATFORM_LIBRARIES} imm32 version)
         set(CMAKE_LIBRARY_PATH "${CHOWDREN_BASE_DIR}/lib/mingw"
@@ -309,15 +352,17 @@ elseif(APPLE)
 endif()
 
 if(MSVC)
-    if(MSVC11)
-        SET(CMAKE_GENERATOR_TOOLSET "v110_xp" CACHE STRING
-            "Name of generator toolset." FORCE)
-    elseif(MSVC12)
-        SET(CMAKE_GENERATOR_TOOLSET "v120_xp" CACHE STRING
-            "Name of generator toolset." FORCE)
-    elseif(MSVC14)
-        SET(CMAKE_GENERATOR_TOOLSET "v140_xp" CACHE STRING
-            "Name of generator toolset." FORCE)
+    if(NOT XB1)
+        if(MSVC11)
+            SET(CMAKE_GENERATOR_TOOLSET "v110_xp" CACHE STRING
+                "Name of generator toolset." FORCE)
+        elseif(MSVC12)
+            SET(CMAKE_GENERATOR_TOOLSET "v120_xp" CACHE STRING
+                "Name of generator toolset." FORCE)
+        elseif(MSVC14)
+            SET(CMAKE_GENERATOR_TOOLSET "v140_xp" CACHE STRING
+                "Name of generator toolset." FORCE)
+        endif()
     endif()
 
     # /bigobj is required for MSVC because objects.cpp can get too big on
@@ -330,7 +375,11 @@ if(MSVC)
     # multicore compile
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /MP")
     # SSE2
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:SSE2")
+    if(XB1)
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:AVX /favor:AMD64")
+    else()
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /arch:SSE2")
+    endif()
     # Disable RTTI
     STRING(REGEX REPLACE "/GR" "" CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /GR-")
@@ -443,6 +492,7 @@ if (ANDROID)
          ${SDL_ROOT}/src/main/android/SDL_android_main.c
     )
     set(SRCS ${SDL_SRCS} ${SRCS})
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++11")
 endif()
 
 if (NOT CROSSCOMPILING)

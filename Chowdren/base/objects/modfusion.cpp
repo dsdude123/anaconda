@@ -4,6 +4,7 @@
 #include "chowstring.h"
 #include "stringcommon.h"
 #include "manager.h"
+#include "datastream.h"
 
 static int global_cache[16];
 static int track_volume = -1;
@@ -40,12 +41,41 @@ void ModFusion::load_track(int cache_id, int track)
     global_track_wgm = global_cache[cache_id];
 }
 
+static float * loop_pos = NULL;
+static bool loop_init = false;
+
+namespace ChowdrenAudio
+{
+    void set_loop_pos(SoundBase * sound, float pos);
+}
+
+static void read_loop_pos()
+{
+    FSFile fp(MOD_PATH "info.dat", "r");
+    if (!fp.is_open())
+        return;
+    FileStream stream(fp);
+    unsigned int count = stream.read_uint8();
+    loop_pos = new float[count];
+    for (unsigned int i = 0; i < count; ++i) {
+        loop_pos[i] = stream.read_float();
+    }
+}
+
 void ModFusion::play(int track)
 {
+    if (!loop_init) {
+        loop_init = true;
+        read_loop_pos();
+    }
     fadeout_value = 0.0f;
     media.lock(CHANNEL_ID);
     chowstring path = MOD_PATH + number_to_string(global_track_wgm) + MOD_EXT;
     media.play(path, CHANNEL_ID, 0);
+    if (loop_pos != NULL) {
+        float pos = loop_pos[global_track_wgm];
+        ChowdrenAudio::set_loop_pos(media.channels[CHANNEL_ID].sound, pos);
+    }
     track_volume = -1;
     std::cout << "Play mod: " << track << " " << global_track_wgm << std::endl;
 }

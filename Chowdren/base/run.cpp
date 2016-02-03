@@ -17,7 +17,7 @@
 
 #include <stdlib.h>
 
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -63,6 +63,11 @@ GameManager manager;
 #ifdef CHOWDREN_NL2_CONSOLE
 #include "custom/nl2.h"
 NL2Handler nl2_handler;
+
+int nl2_get_reload_pos()
+{
+    return nl2_handler.get_reload_pos();
+}
 #endif
 
 // #define CHOWDREN_USER_PROFILER
@@ -89,6 +94,10 @@ static FSFile user_log;
 
 void GameManager::init()
 {
+#ifdef CHOWDREN_IS_3DS
+    swap_screens = false;
+#endif
+
 #ifdef CHOWDREN_USER_PROFILER
     user_log.open("log.txt", "w");
 #endif
@@ -132,6 +141,7 @@ void GameManager::init()
 
     // application setup
     preload_images();
+
     reset_globals();
     setup_keys(this);
 
@@ -155,9 +165,10 @@ void GameManager::init()
     // values->set(12, 2);
 #elif defined(CHOWDREN_IS_NL2)
     // values->set(17, 1);
-    // values->set(22, 2);
-    // values->set(24, 1);
-    // start_frame = 2;
+    values->set(22, 2);
+    values->set(24, 0);
+    // values->set(37, 1);
+    start_frame = 6;
 #elif defined(CHOWDREN_IS_NAH)
     platform_set_scale_type(2);
     start_frame = 0;
@@ -168,8 +179,10 @@ void GameManager::init()
 #else
     start_frame = 0;
 #endif
-    
-#ifdef NDEBUG
+
+#if defined(CHOWDREN_DEBUG_SDMC)
+    set_frame(4);
+#elif defined(NDEBUG)
     set_frame(0);
 #else
     set_frame(start_frame);
@@ -400,7 +413,6 @@ void GameManager::draw()
         }
     }
 #elif CHOWDREN_IS_3DS
-    static bool swap_screens = true;
     static int draw_interval = 0;
     if (swap_screens) {
         // only draw 30 fps on top screen
@@ -848,6 +860,10 @@ bool GameManager::update()
             return false;
     }
 
+#ifdef CHOWDREN_NL2_CONSOLE
+    nl2_handler.post_update();
+#endif
+
     double draw_time = platform_get_time();
 
     draw();
@@ -906,8 +922,6 @@ static void _emscripten_run()
 
 void GameManager::run()
 {
-    init();
-
 #ifdef CHOWDREN_IS_EMSCRIPTEN
     emscripten_set_main_loop(_emscripten_run, 0, 1);
 #else
@@ -917,8 +931,10 @@ void GameManager::run()
     }
     frame->data->on_app_end(frame);
     frame->data->on_end(frame);
+#ifndef CHOWDREN_IS_ANDROID
     media.stop();
     platform_exit();
+#endif
 #endif
 }
 
@@ -1236,7 +1252,7 @@ bool is_player_pressed_once(int player, int flags)
 
 // main function
 
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
 static void open_console()
 {
 #ifndef CHOWDREN_SHOW_DEBUGGER
@@ -1255,7 +1271,7 @@ int main(int argc, char *argv[])
 {
     install_crash_handler();
 
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     open_console();
 #endif
 
@@ -1266,6 +1282,19 @@ int main(int argc, char *argv[])
         return ret;
 #endif
 
+    manager.init();
+
+#ifdef CHOWDREN_IS_ANDROID
+    while (true) {
+        manager.run();
+        media.stop_samples();
+        platform_minimize();
+        manager.frame->has_quit = false;
+        manager.reset_globals();
+        manager.set_frame(0);
+    }
+#else
     manager.run();
+#endif
     return 0;
 }

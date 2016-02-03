@@ -1066,8 +1066,14 @@ struct DrawCallback
     bool on_callback(void * data)
     {
         FrameObject * item = (FrameObject*)data;
-        if (!(item->flags & VISIBLE) || item->flags & DESTROYING)
+#ifdef CHOWDREN_IS_NL2
+        if ((item->flags & (DESTROYING | ALL_VISIBLE |
+                            INTERNAL_HIDE)) != ALL_VISIBLE)
             return true;
+#else
+        if ((item->flags & (DESTROYING | ALL_VISIBLE)) != ALL_VISIBLE)
+            return true;
+#endif
         if (!collide_box(item, aabb))
             return true;
         list.push_back(item);
@@ -1176,6 +1182,10 @@ void Layer::draw(int display_x, int display_y)
     }
 
     PROFILE_END();
+}
+
+void dummy_func()
+{
 }
 
 #if defined(CHOWDREN_HAS_MRT)
@@ -2761,7 +2771,7 @@ void File::change_directory(const chowstring & path)
 
 void File::create_directory(const chowstring & path)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     platform_create_directories(path);
 #else
     platform_create_directories(convert_path(path));
@@ -2770,7 +2780,7 @@ void File::create_directory(const chowstring & path)
 
 bool File::file_exists(const chowstring & path)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     return platform_is_file(path);
 #else
     return platform_is_file(convert_path(path));
@@ -2785,7 +2795,7 @@ bool File::file_readable(const chowstring & path)
 
 bool File::name_exists(const chowstring & path)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     return platform_path_exists(path);
 #else
     return platform_path_exists(convert_path(path));
@@ -2794,7 +2804,7 @@ bool File::name_exists(const chowstring & path)
 
 bool File::directory_exists(const chowstring & path)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     return platform_is_directory(path);
 #else
     return platform_is_directory(convert_path(path));
@@ -2814,7 +2824,7 @@ void File::delete_folder(const chowstring & path)
 
 bool File::copy_file(const chowstring & src, const chowstring & dst)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     chowstring new_src = src;
     chowstring new_dst = dst;
 #else
@@ -2839,7 +2849,7 @@ bool File::copy_file(const chowstring & src, const chowstring & dst)
 
 int File::get_size(const chowstring & path)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     return platform_get_file_size(path.c_str());
 #else
     return platform_get_file_size(convert_path(path).c_str());
@@ -2854,7 +2864,7 @@ void File::rename_file(const chowstring & src, const chowstring & dst)
 
 void File::append_text(const chowstring & text, const chowstring & path)
 {
-#ifdef _WIN32
+#ifdef CHOWDREN_IS_WIN32
     chowstring new_path = path;
 #else
     chowstring new_path = convert_path(path);

@@ -163,7 +163,7 @@ EXTENSION_ALIAS = {
 
 IGNORE_EXTENSIONS = set([
     'kcwctrl', 'SteamChowdren', 'ChowdrenFont', 'INI++', 'MMKPathPlanner',
-    'Layer'
+    'Layer', 'ChowdrenPlatform'
 ])
 
 if sys.platform == 'win32':
@@ -1271,6 +1271,9 @@ class Converter(object):
                     pil_image = Image.frombytes('RGBA', (image.width,
                         image.height), image.getImageData())
 
+                width = pil_image.size[0]
+                height = pil_image.size[1]
+
                 handle = (image.handle, game_index)
                 colors = pil_image.getcolors(1)
                 if colors is not None:
@@ -1279,7 +1282,7 @@ class Converter(object):
 
                 extra_hash = [image.xHotspot, image.yHotspot,
                               image.actionX, image.actionY,
-                              image.width, image.height]
+                              width, height]
                 extra_hash = [str(item) for item in extra_hash]
                 image_hash = get_hash(pil_image.tobytes() +
                                       '&'.join(extra_hash))
@@ -1347,7 +1350,9 @@ class Converter(object):
         for i, (image, image_hash) in enumerate(new_entries):
             cache_path = get_image_path(image_hash)
             temp = open(cache_path, 'rb').read()
-            arg = (image.width, image.height,
+            pil_image = maxrects_images[i]
+            width, height = pil_image.size
+            arg = (width, height,
                    image.xHotspot, image.yHotspot,
                    image.actionX, image.actionY, temp)
 
@@ -2502,6 +2507,7 @@ class Converter(object):
 
     def clear_selection(self):
         self.has_selection = {}
+        self.condition_selection = {}
         self.has_single_selection = {}
         self.saved_selections = set()
 
@@ -2725,6 +2731,7 @@ class Converter(object):
 
         if post_calls is not None:
             names.extend(post_calls)
+            containers += [None] * len(post_calls)
 
         if not self.use_dlls:
             wrapper_hash = get_hash(''.join(names))
@@ -2953,6 +2960,8 @@ class Converter(object):
             self.has_single_selection = single_save
 
         self.in_actions = True
+
+        self.condition_selection = self.has_selection.copy()
 
         action_index = -1
         while action_index < len(actions) - 1:
@@ -3326,30 +3335,38 @@ class Converter(object):
         obj_single = None
 
         has_col = False
+        clear_func = 'clear_selection'
         set_lists = []
 
         for obj in objs:
             single = self.get_single(obj)
             if single is not None:
+                # currently only used for Noitu Love?
+                # we're fine with using empty_selection here.
                 print 'using single for clear list'
                 writer.putlnc('%s.select_single_check(%s);',
                               self.object_lists[obj + (self.game_index,)],
                               single)
+                clear_func = 'empty_selection'
                 has_col = True
                 continue
             if self.has_common_objects(obj, self.has_selection):
                 has_col = True
+                if obj in self.condition_selection:
+                    clear_func = 'empty_selection'
             else:
                 clear_lists.add(self.get_object_list(obj))
             set_lists.append(obj)
 
         if has_col:
             writer.putln('// icache destruction')
+            if clear_func == 'empty_selection':
+                writer.putlnc('// chose empty_selection')
         else:
             clear_lists = (list_name,)
 
         for obj_list in clear_lists:
-            writer.putlnc('%s.clear_selection();', obj_list)
+            writer.putlnc('%s.%s();', obj_list, clear_func)
 
         for obj in set_lists:
             if obj == object_info:

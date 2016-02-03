@@ -54,15 +54,12 @@ void AssociateArray::set_key(const chowstring & key)
 void AssociateArray::load_encrypted(const chowstring & filename,
                                     int method)
 {
-    clear();
-
     chowstring src;
-
     if (!read_file(filename.c_str(), src))
         return;
 
+    clear();
     chowstring dst;
-
     cipher.decrypt(&dst, src);
 
     if (dst.compare(0, sizeof(ARRAY_MAGIC)-1,
@@ -76,13 +73,19 @@ void AssociateArray::load_encrypted(const chowstring & filename,
 
 void AssociateArray::load(const chowstring & filename, int method)
 {
-    clear();
-
+    std::cout << "Load: " << filename << std::endl;
     chowstring data;
 
     if (!read_file(filename.c_str(), data))
         return;
 
+    clear();
+
+#ifdef CHOWDREN_IS_NL2
+    // we are just getting some raw data here. this is probably the right
+    // format.
+    load_data(data, method);
+#else
     if (data.compare(0, sizeof(ARRAY_MAGIC)-1,
                      ARRAY_MAGIC, sizeof(ARRAY_MAGIC)-1) != 0) {
         std::cout << "Invalid magic for " << filename << std::endl;
@@ -90,6 +93,9 @@ void AssociateArray::load(const chowstring & filename, int method)
     }
 
     load_data(data.substr(sizeof(ARRAY_MAGIC)-1), method);
+#endif
+
+    std::cout << "Done" << std::endl;
 }
 
 inline void decode_method(chowstring & str, int method)
@@ -273,10 +279,11 @@ const chowstring & AssociateArray::get_key(ArrayAddress addr)
     return addr.it->first;
 }
 
-template <typename T>
+template <typename T, bool magic>
 inline void save_assarray(AssociateArray & array, T & stream, int method)
 {
-    stream.write(ARRAY_MAGIC, sizeof(ARRAY_MAGIC)-1);
+    if (magic)
+        stream.write(ARRAY_MAGIC, sizeof(ARRAY_MAGIC)-1);
 
     ArrayMap::iterator it;
     for (it = array.map->begin(); it != array.map->end(); it++) {
@@ -307,7 +314,7 @@ void AssociateArray::save(const chowstring & path, int method)
         return;
     }
     WriteStream stream;
-    save_assarray(*this, stream, method);
+    save_assarray<WriteStream, false>(*this, stream, method);
     stream.save(fp);
     fp.close();
 }
@@ -316,7 +323,7 @@ void AssociateArray::save_encrypted(const chowstring & path, int method)
 {
     std::stringstream ss;
     DataStream stream(ss);
-    save_assarray(*this, stream, method);
+    save_assarray<DataStream, true>(*this, stream, method);
     chowstring src = ss.str();
     chowstring dst;
     cipher.encrypt(&dst, src);

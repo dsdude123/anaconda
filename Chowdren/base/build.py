@@ -226,7 +226,36 @@ SDL_JAVA = os.path.join(ANDROID_SRC, SDL_JAVA_REL)
 CHOWDREN_JAVA = os.path.join(ANDROID_SRC, 'ChowdrenActivity.java')
 DEBUG_KEYSTORE = os.path.join(os.path.expanduser('~'), '.android',
                               'debug.keystore')
+EXTRAS_DIR = os.path.join(ANDROID_SDK, 'extras')
+GOOGLEPLAY_DIR = os.path.join(EXTRAS_DIR, 'google',
+                              'google_play_services', 'libproject',
+                              'google-play-services_lib')
+GOOGLEPLAY_RES = os.path.join(GOOGLEPLAY_DIR, 'res')
+GOOGLEPLAY_JAR = os.path.join(GOOGLEPLAY_DIR, 'libs',
+                              'google-play-services.jar')
+SUPPORT_JAR = os.path.join(EXTRAS_DIR, 'android', 'support', 'v4',
+                           'android-support-v4.jar')
 PACKAGE_NAME = 'org.chowdren.app'
+DOWNLOAD_LIB = os.path.join(EXTRAS_DIR, 'google', 'play_apk_expansion',
+                            'downloader_library')
+DOWNLOAD_SRC = os.path.join(DOWNLOAD_LIB, 'src')
+DOWNLOAD_RES = os.path.join(DOWNLOAD_LIB, 'res')
+LICENSING_LIB = os.path.join(EXTRAS_DIR, 'google', 'play_licensing',
+                             'library')
+LICENSING_SRC = os.path.join(LICENSING_LIB, 'src')
+LICENSING_RES = os.path.join(LICENSING_LIB, 'res')
+EXPANSION_DIR = os.path.join(ANDROID_PROJECT_SRC, 'expansion')
+EXPANSION_SRC = os.path.join(EXPANSION_DIR, 'src')
+EXPANSION_RES = os.path.join(EXPANSION_DIR, 'res')
+
+def get_java_srcs(path):
+    found_files = []
+    for root, dirs, files in os.walk(path):
+        for name in files:
+            if not name.endswith('.java'):
+                continue
+            found_files.append(os.path.join(root, name))
+    return found_files
 
 class AndroidBuilder(Builder):
     def setup_parser(self, parser):
@@ -236,6 +265,8 @@ class AndroidBuilder(Builder):
                             help='Make APK compatible with Android TV')
         parser.add_argument('--gamecircle', action='store_true',
                             help='Use GameCircle for achievements')
+        parser.add_argument('--googleplay', action='store_true',
+                            help='Use Google Play for achievements')
         parser.add_argument('--package', default='com.chowdren.app',
                             help='Package name to use')
 
@@ -265,6 +296,13 @@ class AndroidBuilder(Builder):
             data = data.replace('<!-- gamecircle', '')
             data = data.replace('gamecircle -->', '')
 
+        if self.args.googleplay:
+            data = data.replace('<!-- googleplay', '')
+            data = data.replace('googleplay -->', '')
+        else:
+            data = data.replace('<!-- normal', '')
+            data = data.replace('normal -->', '')
+
         if not self.args.tv:
             data = data.replace('android:banner="@drawable/banner"', '')
 
@@ -279,40 +317,57 @@ class AndroidBuilder(Builder):
             data = data.replace('/* gamecircle', '')
             data = data.replace('gamecircle */', '')
 
+        if self.args.googleplay:
+            data = data.replace('/* googleplay', '')
+            data = data.replace('googleplay */', '')
+
         sdl_java = os.path.join('src', SDL_JAVA_REL)
         makedirs(os.path.dirname(sdl_java))
         with open(sdl_java, 'wb') as fp:
             fp.write(data)
 
-        # create ChowdrenActivity.java
-        with open(CHOWDREN_JAVA, 'rb') as fp:
-            data = fp.read()
+        java_in = [CHOWDREN_JAVA]
+        if self.args.googleplay:
+            java_in += get_java_srcs(EXPANSION_SRC)
 
-        data = data.replace(PACKAGE_NAME, self.args.package)
+        java_srcs = [sdl_java]
+        for path in java_in:
+            # create ChowdrenActivity.java, etc.
+            with open(path, 'rb') as fp:
+                data = fp.read()
 
-        chowdren_java = os.path.join('src', 'ChowdrenActivity.java')
-        with open(chowdren_java, 'wb') as fp:
-            fp.write(data)
+            data = data.replace(PACKAGE_NAME, self.args.package)
 
-        r_java = ['gen'] + self.args.package.split('.') + ['R.java']
-        r_java = os.path.join(*r_java)
-        java_srcs = [r_java, sdl_java, chowdren_java]
+            java_dst = os.path.join('src', os.path.basename(path))
+            with open(java_dst, 'wb') as fp:
+                fp.write(data)
+
+            java_srcs.append(java_dst)
+
+        if self.args.googleplay:
+            java_srcs += get_java_srcs(DOWNLOAD_SRC)
+            java_srcs += get_java_srcs(LICENSING_SRC)
 
         makedirs('bin/lib')
         for arch in ARCHS:
             self.build_arch(arch)
 
+        shutil.rmtree('gen')
         makedirs('gen')
         makedirs('bin')
         makedirs('obj')
         makedirs('assets')
         makedirs('apk')
 
-        res_dir = RES_DIR
         if os.path.isdir('res'):
-            res_dir = 'res'
+            res_dirs = ['res']
+        else:
+            res_dirs = [RES_DIR]
+
+        special_res_dirs = []
 
         deps = [self.android_jar]
+        packages = []
         dex_names = ['obj']
         if self.args.gamecircle:
             so = os.path.join(base_dir, 'GameCircleSDK', 'jni',
@@ -326,18 +381,38 @@ class AndroidBuilder(Builder):
                 gamecircle_lib = os.path.join(gamecircle_libs, name)
                 dex_names.append(gamecircle_lib)
 
+        if self.args.googleplay:
+            deps.append(GOOGLEPLAY_JAR)
+            dex_names.append(GOOGLEPLAY_JAR)
+            deps.append(SUPPORT_JAR)
+            dex_names.append(SUPPORT_JAR)
+            res_dirs.append(GOOGLEPLAY_RES)
+            res_dirs.append(EXPANSION_RES)
+            res_dirs.append(DOWNLOAD_RES)
+            res_dirs.append(LICENSING_RES)
+            packages.append('com.android.vending.expansion.downloader')
+
+        packages_arg = []
+        if packages:
+            packages_arg += ['--extra-packages', ':'.join(packages)]
+
+        res_arg = ['--auto-add-overlay']
+        for res_dir in res_dirs:
+            res_arg += ['-S', res_dir]
+
         shutil.copy('Assets.dat', os.path.join('assets', 'Assets.dat'))
-        self.call([AAPT, 'package', '-m', '-J', 'gen', '-A', 'assets', '-M',
-                   './AndroidManifest.xml', '-S', res_dir, '-I',
-                   self.android_jar])
+        self.call([AAPT, 'package', '-m', '-J', 'gen'] + packages_arg +
+                   ['-A', 'assets', '-M', './AndroidManifest.xml'] + res_arg +
+                   ['-I', self.android_jar])
+        java_srcs += get_java_srcs('gen')
         self.call(['javac', '-source', '1.6', '-target', '1.6', '-classpath',
                    ';'.join(deps), '-d', 'obj',
                    '-sourcepath', 'src;gen'] + java_srcs)
         self.call([DX, '--dex', '--verbose', '--output=bin/classes.dex']
                   + dex_names)
         self.call([AAPT, 'package', '-f', '-A', 'assets', '-M',
-                   './AndroidManifest.xml', '-S', res_dir, '-I',
-                   self.android_jar, '-F', 'apk/unsigned.apk', 'bin'])
+                   './AndroidManifest.xml'] + res_arg +
+                   ['-I', self.android_jar, '-F', 'apk/unsigned.apk', 'bin'])
         if os.path.isfile('key.cfg'):
             with open('key.cfg', 'rb') as fp:
                 key_json = json.load(fp)
@@ -396,6 +471,10 @@ class AndroidBuilder(Builder):
             args += ['-DUSE_GAMECIRCLE=ON']
         else:
             args += ['-DUSE_GAMECIRCLE=OFF']
+        if self.args.googleplay:
+            args += ['-DUSE_GOOGLEPLAY=ON']
+        else:
+            args += ['-DUSE_GOOGLEPLAY=OFF']
         return args
 
 CMAKE_URL = 'https://cmake.org/files/v3.4/cmake-3.4.0-rc3-Darwin-x86_64.tar.gz'

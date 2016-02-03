@@ -68,7 +68,8 @@ class state:
 
 class HLSLShader(object):
     def __init__(self, data, ext, profile, vs_out=None):
-        data = data.replace('cbuffer', 'ConstantBuffer')
+        if profile != 'hlsl11':
+            data = data.replace('cbuffer', 'ConstantBuffer')
         data = data.replace('uniform float4 dx_ViewAdjust',
                             '// uniform float4 dx_ViewAdjust')
 
@@ -98,6 +99,8 @@ class HLSLShader(object):
 
         if profile in ('cg', 'hlsl'):
             pos_semantic = 'POSITION'
+        elif profile == 'hlsl11':
+            pos_semantic = 'SV_POSITION'
         else:
             pos_semantic = 'S_POSITION'
 
@@ -135,6 +138,8 @@ class HLSLShader(object):
                 suffix = ''
             elif profile == 'hlsl':
                 suffix = ' : COLOR0'
+            elif profile == 'hlsl11':
+                suffix = ' : SV_TARGET'
             else:
                 suffix = ' : S_TARGET_OUTPUT'
 
@@ -154,7 +159,7 @@ def get_shader(source, ext, profile, vs_out=None):
     fp.write(source)
     fp.flush()
 
-    if profile == 'pssl':
+    if profile in ('pssl', 'hlsl11'):
         target = 'h11'
     elif profile in ('cg', 'hlsl'):
         target = 'h9'

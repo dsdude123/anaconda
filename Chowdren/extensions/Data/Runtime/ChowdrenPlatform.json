@@ -18,6 +18,13 @@
     ],
     ["Language",
         [2, "Localize to language"]
+    ],
+    ["Screen",
+        [3, "Set border"]
+    ],
+    ["Android",
+        [4, "Open achievements UI"]
+        [5, "Minimize application"]
     ]
 ]
 
@@ -57,8 +64,29 @@
         [
             ["Text", "Language"]
         ]
-    }
+    },
+    {
+        "Title": "Set border to %0"
 
+        "Parameters":
+        [
+            ["Integer", "Border size"]
+        ]
+    },
+    {
+        "Title": "Open achievements UI"
+
+        "Parameters":
+        [
+        ]
+    },
+    {
+        "Title": "Minimize application"
+
+        "Parameters":
+        [
+        ]
+    }
 ]
 
 "Conditions":

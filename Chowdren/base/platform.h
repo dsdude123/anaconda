@@ -50,6 +50,7 @@ bool platform_has_focus();
 void platform_set_focus(bool v);
 void platform_show_mouse();
 void platform_get_mouse_pos(int * x, int * y);
+void platform_get_mouse_pos_raw(int * x, int * y);
 void platform_hide_mouse();
 void platform_begin_draw();
 void platform_swap_buffers();
@@ -63,6 +64,7 @@ bool platform_get_vsync();
 void platform_set_fullscreen(bool value);
 void platform_unlock_achievement(const chowstring & name);
 void platform_preload_file(FSFile & fp, size_t size);
+void platform_set_border_size(int size);
 
 // fs
 
@@ -166,6 +168,7 @@ const chowstring & get_joystick_guid(int n);
 // desktop
 void platform_set_display_scale(int scale);
 void platform_set_scale_type(int type);
+void platform_set_relative_mouse(bool enabled);
 
 // ps4
 void platform_set_lightbar(int r, int g, int b, int ms, int type);
@@ -196,5 +199,19 @@ int platform_get_remote_value();
 unsigned int platform_get_texture_pixel(unsigned int tex, int x, int y);
 void platform_set_border(bool value);
 bool platform_has_error();
+
+enum ControlType
+{
+    CONTROL_GENERIC,
+    CONTROL_WIIMOTE_NUNCHUCK,
+    CONTROL_DRC
+};
+
+ControlType platform_get_control_type();
+
+// android
+
+void platform_open_achievements();
+void platform_minimize();
 
 #endif // CHOWDREN_PLATFORM_H

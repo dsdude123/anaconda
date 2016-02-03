@@ -35,7 +35,9 @@ class PlatformAction(ActionMethodWriter):
 actions = make_table(PlatformAction, {
     0 : 'platform_set_lightbar',
     1 : 'platform_reset_lightbar',
-    2 : 'set_local'
+    2 : 'set_local',
+    3 : 'platform_set_border_size',
+    4 : 'platform_open_achievements'
 })
 
 conditions = make_table(ConditionMethodWriter,  {

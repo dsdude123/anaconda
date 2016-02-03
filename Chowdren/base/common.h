@@ -501,4 +501,8 @@ void deactivate_menu(unsigned int id);
 
 #endif
 
+#ifdef CHOWDREN_IS_NL2
+int nl2_get_reload_pos();
+#endif
+
 #endif // CHOWDREN_COMMON_H

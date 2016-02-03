@@ -128,6 +128,10 @@ enum ObjectFlags
     LAYER_VISIBLE = (1 << 12),
     DISABLE_COL = (1 << 13),
 
+#ifdef CHOWDREN_IS_NL2
+    INTERNAL_HIDE = (1 << 31),
+#endif
+
     ALL_VISIBLE = VISIBLE | LAYER_VISIBLE
 };
 

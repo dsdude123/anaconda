@@ -17,7 +17,8 @@
 
 #include "chowconfig.h"
 
-// #define TEST_SDL_AUDIO
+#define TEST_SDL_AUDIO
+// #define FORCE_XAUDIO2
 
 #ifdef CHOWDREN_IS_DESKTOP
 #if defined(CHOWDREN_IS_ANDROID) || defined(TEST_SDL_AUDIO)

@@ -768,6 +768,7 @@ void SteamObject::upload(const chowstring & name)
 void SteamObject::download(const chowstring & name)
 {
 #ifdef CHOWDREN_ENABLE_STEAM
+    return;
     if (!global_steam_obj.initialized)
         return;
     chowstring filename = get_path_filename(name);

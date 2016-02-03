@@ -123,6 +123,7 @@ void Counter::set(double value)
         if (zero_pad > 0) {
             std::ostringstream str;
             str << std::setw(zero_pad) << std::setfill('0') << value;
+			cached_string = str.str();
         } else {
             cached_string = number_to_string(value);
         }
