@@ -484,7 +484,7 @@ SET_PATHS = (
      '@executable_path/../MacOS/libSDL2.dylib'),
     ('@loader_path/libsteam_api.dylib',
      '@executable_path/../MacOS/libsteam_api.dylib'),
-    ('/Users/travis/build/LWJGL-CI/openal-soft/OSX/libopenal.1.dylib',
+    ('@@HOMEBREW_PREFIX@@/lib/libopenal.1.dylib',
      '@executable_path/../MacOS/libopenal.1.dylib')
 )
 
