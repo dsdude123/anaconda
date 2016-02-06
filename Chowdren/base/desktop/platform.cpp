@@ -824,7 +824,14 @@ void platform_create_display(bool fullscreen)
     pparams.Windowed = TRUE;
     pparams.BackBufferFormat = D3DFMT_UNKNOWN;
     pparams.FullScreen_RefreshRateInHz = 0;
+
+#ifdef CHOWDREN_VSYNC
+    pparams.PresentationInterval = D3DPRESENT_INTERVAL_ONE;
+    vsync_value = 1;
+#else
     pparams.PresentationInterval = D3DPRESENT_INTERVAL_IMMEDIATE;
+    vsync_value = 0;
+#endif
 
     create_d3d_device();
 

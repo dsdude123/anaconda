@@ -363,6 +363,15 @@ if(MSVC)
             SET(CMAKE_GENERATOR_TOOLSET "v140_xp" CACHE STRING
                 "Name of generator toolset." FORCE)
         endif()
+
+        # use /MT
+        foreach(flag_var
+                CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG CMAKE_CXX_FLAGS_RELEASE
+                CMAKE_CXX_FLAGS_MINSIZEREL CMAKE_CXX_FLAGS_RELWITHDEBINFO)
+           if(${flag_var} MATCHES "/MD")
+              string(REGEX REPLACE "/MD" "/MT" ${flag_var} "${${flag_var}}")
+           endif(${flag_var} MATCHES "/MD")
+        endforeach(flag_var)
     endif()
 
     # /bigobj is required for MSVC because objects.cpp can get too big on

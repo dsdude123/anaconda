@@ -346,15 +346,10 @@ void GameManager::set_framerate(int framerate)
     fps_limit.set(framerate);
 #ifdef CHOWDREN_VSYNC
     static bool vsync_temp = false;
-    if (framerate < 100) {
-        if (!vsync_temp)
-            return;
+    if (framerate < 100)
         platform_set_vsync(true);
-        vsync_temp = false;
-        return;
-    }
-    vsync_temp = true;
-    platform_set_vsync(false);
+    else
+        platform_set_vsync(false);
 #endif
 }
 

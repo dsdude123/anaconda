@@ -261,12 +261,10 @@ def get_missing_image(converter, image):
 from PIL import Image
 
 def get_images(converter):
-    if converter.platform_name == '3ds':
+    if converter.platform_name != 'wiiu':
         return {}
 
     images = {}
-    # if not converter.platform_name == 'wiiu':
-    #     return images
     obj = converter.find_frameitem("GUI_ScoreTimeRings")
     data = obj.properties.loader.animations.loadedAnimations
 
