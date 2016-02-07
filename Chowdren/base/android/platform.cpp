@@ -73,6 +73,8 @@ std::unique_ptr<gpg::GameServices> game_services;
 static bool in_auth = true;
 #endif
 
+static bool is_tv_mode = false;
+
 void init_asset_manager()
 {
     jmethodID mid;
@@ -167,6 +169,9 @@ void init_asset_manager()
             break;
     }
     #undef MAKE_LANG
+
+    is_tv_mode = AConfiguration_getUiModeType(config) ==
+                    ACONFIGURATION_UI_MODE_TYPE_TELEVISION;
 }
 #endif
 
@@ -221,6 +226,11 @@ void platform_minimize()
             "moveTaskToBack", "(Z)Z");
     jboolean ret = env->CallBooleanMethod(java_activity_context, mid, true);
     env->PopLocalFrame(NULL);
+}
+
+bool platform_is_tv()
+{
+    return is_tv_mode;
 }
 
 void platform_init_android()

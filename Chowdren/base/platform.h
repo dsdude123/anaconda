@@ -213,5 +213,6 @@ ControlType platform_get_control_type();
 
 void platform_open_achievements();
 void platform_minimize();
+bool platform_is_tv();
 
 #endif // CHOWDREN_PLATFORM_H

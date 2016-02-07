@@ -41,6 +41,7 @@ actions = make_table(PlatformAction, {
 })
 
 conditions = make_table(ConditionMethodWriter,  {
+    0 : 'platform_is_tv'
 })
 
 expressions = make_table(ExpressionMethodWriter, {

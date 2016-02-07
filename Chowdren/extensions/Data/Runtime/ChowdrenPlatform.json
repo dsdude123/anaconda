@@ -30,6 +30,9 @@
 
 "ConditionMenu":
 [
+    ["Android",
+        [0, "Is TV"]
+    ]
 ]
 
 "ExpressionMenu":
@@ -91,6 +94,13 @@
 
 "Conditions":
 [
+    {
+        "Title": "Is TV"
+
+        "Parameters":
+        [
+        ]
+    }
 ]
 
 "Expressions":
